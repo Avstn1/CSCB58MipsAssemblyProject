@@ -182,7 +182,6 @@ skip_gravity:
 	addi $a0, $t5, 0
 	syscall
 
-	
 	beq $t5, 0, move_check
 
 	# Paint below pixel black
@@ -374,6 +373,7 @@ respond_to_d_jumping:
 	beq $t5, 0, gravity_loop # don't paint to screen if at right border ($t5 == 0)
 	
 	# Paint right pixel black
+	
 	addi $t5, $t0, 0
 	addi $t0, $t0, 16
 	
@@ -759,6 +759,8 @@ cloud_delete_four:
 	jr $ra
 	
 
+	
+
 ###########################################
 # Fucntion for displaying a picture in the bitmap display
 LOAD_PICTURE:
@@ -910,9 +912,13 @@ return_can_move:
 	sw $t9, 0($sp)
 end_can_move:
 	jr $ra
+
+######################################################
+
+
+
 	
-	
-##################################
+######################################################
 # DEALS WITH PLATFORMS
 LEVEL_1:
 
@@ -920,6 +926,11 @@ LEVEL_1:
 	sw $ra, 0($sp)
 
 	li $t2, 83392
+	addi $sp, $sp, -4
+	sw $t2, 0($sp)
+	jal GENERATE_PLATFORM
+	
+	li $t2, 41440
 	addi $sp, $sp, -4
 	sw $t2, 0($sp)
 	jal GENERATE_PLATFORM
