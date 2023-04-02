@@ -990,31 +990,36 @@ picture_loop:
 	addi $t6, $t6, 2      # Skip over the "0x" prefix
 	li $t7, 0             # Initialize decimal value to zero
 loop:
-	lbu $t8, ($t6)        # Load current character into $t8
-	beqz $t8, end_loop    # Exit loop if current character is null terminator
-	sub $t8, $t8, 48      # Convert ASCII code to decimal value
-	bge $t8, 97, sub_a    # If character is a-f, subtract 17 to convert to decimal
-	bge $t8, 55, sub_A    # If character is A-F, subtract 10 to convert to decimal
+	lbu $t8, ($t6) # Load current byte into $t8
+	beqz $t8, end_loop # Exit loop if current byte is null terminator
+	andi $t9, $t8, 0xFF # Convert signed byte to unsigned byte value
+	sub $t9, $t9, 48 # Convert ASCII code for '0' to decimal value
+	bge $t9, 17, sub_a # If character is a-f, subtract 17 to convert to decimal
+	bge $t9, 10, sub_A # If character is A-F, subtract 10 to convert to decimal
 	li $t3, 16
-	mult $t7, $t3	      # Multiply current value by 16 (since we're reading in hex)
-	mflo $t7	      
-	add $t7, $t7, $t8     # Add decimal value of current character
-	addi $t6, $t6, 1      # Move to next character in string
+	mult $t7, $t3 # Multiply current value by 16 (since we're reading in hex)
+	mflo $t7
+	add $t7, $t7, $t9 # Add decimal value of current character
+	addi $t6, $t6, 1 # Move to next byte in string
 	j loop
 sub_a:
-	sub $t8, $t8, 97      # Subtract 87 to convert a-f to decimal
+	sub $t9, $t9, 39 # Subtract 39 to convert a-f to decimal
 	j common
 sub_A:
-	sub $t8, $t8, 55      # Subtract 55 to convert A-F to decimal
+	sub $t9, $t9, 7 # Subtract 7 to convert A-F to decimal
 common:
 	li $t3, 16
 	mult $t7, $t3
-	mflo $t7	      # Multiply current value by 16 (since we're reading in hex)
-	add $t7, $t7, $t8     # Add decimal value of current character
-	addi $t6, $t6, 1      # Move to `next character in string
+	mflo $t7 # Multiply current value by 16 (since we're reading in hex)
+	add $t7, $t7, $t9 # Add decimal value of current character
+	addi $t6, $t6, 1 # Move to next byte in string
 	j loop
-	
 end_loop:
+
+	#li $v0, 1
+	#addi $a0, $t7, 0
+	#syscall
+	#j terminate
 
 	beq $t7, 0x767676, skip_draw
 	sw $t7, ($t1)
