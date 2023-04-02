@@ -61,9 +61,9 @@ you_lose_start:
 .eqv WAIT_TIME 1
 
 
-.eqv JUMP_HEIGHT 25
+.eqv JUMP_HEIGHT 45
 .eqv GRAVITY_WAIT 9
-.eqv JUMP_WAIT 20
+.eqv JUMP_WAIT 10
 .eqv QUICK_FALL_VALUE 1
 
 .eqv NO_JUMP 6
@@ -149,15 +149,21 @@ RESTART:
 # Direction Register: $t2
 # Start platform counter
 
-	
+
+	li $t1, 0
 ##########################################################################
 # ESSENTIALLY THE MAIN LOOP LABEL
 gravity_loop:
 #### STARTING PLATFORM #######
+	
+	jal 
+	addi $t1, $t1, 1
+	bne $t1, 85, reset_iteration
+	j normal_gravity
+reset_iteration:
+	li $t1, 0
+	j normal_gravity
 
-	jal LEVEL_1
-
-j normal_gravity
 quick_fall:
 	j skip_gravity
 
@@ -177,10 +183,6 @@ skip_gravity:
 	jal CAN_MOVE
 	lw $t5, 0($sp)
 	addi $sp, $sp, 4
-	
-	li $v0, 1
-	addi $a0, $t5, 0
-	syscall
 
 	beq $t5, 0, move_check
 
@@ -307,7 +309,7 @@ jump_loop:
 	beq $t5, NO_JUMP, gravity_loop
 
 	addi $t5, $t0, 0
-	addi $t0, $t0, -2048
+	addi $t0, $t0, -1024
 
 	addi $sp, $sp, -4
 	sw $t5, 0($sp)
@@ -634,10 +636,98 @@ rock_seven:
 
 	jr $ra
 	
+	
+	
+TEST_PLATFORM:
+	lw $t6, 0($sp)
+	addi $sp, $sp, 4
+	addi $t6, $t6, BASE_ADDRESS
+	
+	# Calculate original row
+	li $t8, 1024
+	li $t9, 4
+	mult $t8, $t9
+	mflo $t8
+	div $t6, $t8
+	mflo $t3
+	
+	li $t7, 0x8e8e8e
+	li $t4, 0
+	li $t5, 0
+	addi $t5, $t4, 120
+test_loop:
+
+	##################################
+	# Calculate new row (if on new row)
+	li $t8, 1024
+	li $t9, 4
+	mult $t8, $t9
+	mflo $t8
+	div $t6, $t8
+	mflo $t8
+	##################################
+
+	blt $t8, $t3, skip_test
+	bgt $t8, $t3, skip_test
+
+	sw $t7, 0($t6)
+skip_test:
+	addi $t6, $t6, 4
+	addi $t4, $t4, 4
+
+	bne $t4, $t5, test_loop
+	
+	jr $ra
+	
+	
+DELETE_TEST_PLATFORM:
+	lw $t6, 0($sp)
+	addi $sp, $sp, 4
+	addi $t6, $t6, BASE_ADDRESS
+	
+	# Calculate original row
+	li $t8, 1024
+	li $t9, 4
+	mult $t8, $t9
+	mflo $t8
+	div $t6, $t8
+	mflo $t3
+	
+	li $t7, 0x4dabf7
+	li $t4, 0
+	li $t5, 0
+	addi $t5, $t4, 120
+test_delete_loop:
+
+	##################################
+	# Calculate new row (if on new row)
+	li $t8, 1024
+	li $t9, 4
+	mult $t8, $t9
+	mflo $t8
+	div $t6, $t8
+	mflo $t8
+	##################################
+
+	blt $t8, $t3, skip_delete_test
+	bgt $t8, $t3, skip_delete_test
+
+	sw $t7, 0($t6)
+skip_delete_test:
+	addi $t6, $t6, 4
+	addi $t4, $t4, 4
+	bne $t4, $t5, test_delete_loop
+	
+	jr $ra
+	
 
 GENERATE_PLATFORM:
 	lw $t6, 0($sp) # load the offset
 	addi $sp, $sp, 4
+	
+	
+	# comments to help 
+	# load y coordinate
 
 	addi $t6, $t6, BASE_ADDRESS
 	
@@ -912,10 +1002,57 @@ return_can_move:
 end_can_move:
 	jr $ra
 
-######################################################
-
+######################################################`
 PLATFORM_MOVEMENT:
 
+	# Store old $ra value
+	addi $sp, $sp, -4 # STORE LAST FUNC CALL ADDRESS
+	sw $ra, 0($sp)
+	
+	# REQUIREMENTS AND GIVENS
+	#	- Must use stack to keep track of randomized pixel value + offsets
+	#	- Must create a random integer from 1 to 90 (perhaps) to generate platforms on
+	#	- Must shift platforms to the beginning of the row (from right to left)
+	#	- Must create a new platform to start shifting after a couple iterations of shifting (perhaps 128 iterations of -4 shifting (OR 64 iterations of -8 shifting)
+
+	# For reusability, load paramter to decide which image to display: 1 for platforms, 2 for enemies, platforms move at -12 but enemies move quicker at -24
+	
+	# Only paramter required is iteration number ( 85, -12 iterations )
+	lw $t2, ($sp)
+	addi $sp
+	
+	# 0. First check if pixel is at its first iteration, if it is go to step 1, otherwise skip randomize step and load old pixel value
+	bge $t2, 1, old_pixel
+	# 1. Initialize new randomized pixel
+randomize:
+	li $t2, 16380
+	addi $sp, $sp,-4 # Load $t1 into stack
+	sw $t2, ($sp)
+	# 2. Load old pixel value
+old_pixel:
+	lw $t2, ($sp) # Load into $t1 from stack
+	addi $sp, $sp, 4
+	
+	# 3. Shift randomized pixel (or platform) to the left by -12 and delete old platform
+	addi $sp, $sp, -4
+	sw $t2, ($sp)
+	jal DELETE_TEST_PLATFORM
+	addi $t1, $t1, -12
+	
+	# 4. Generate new platform
+	addi $sp, $sp, -4
+	sw $t2, ($sp)
+	jal TEST_PLATFORM
+	
+	
+	# Load old $ra value
+	lw $ra, 0($sp)
+	addi $sp, $sp, 4
+	# Load $t1 into stack
+	addi $sp, $sp, -4 
+	sw $t2, ($sp)
+	
+	jr $ra
 
 	
 ######################################################
@@ -930,7 +1067,7 @@ LEVEL_1:
 	sw $t2, 0($sp)
 	jal GENERATE_PLATFORM
 	
-	li $t2, 41440
+	li $t2, 45520
 	addi $sp, $sp, -4
 	sw $t2, 0($sp)
 	jal GENERATE_PLATFORM
