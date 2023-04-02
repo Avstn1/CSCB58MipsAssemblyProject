@@ -62,8 +62,11 @@ you_lose_start:
 
 
 .eqv JUMP_HEIGHT 45
+
 .eqv GRAVITY_WAIT 9
-.eqv JUMP_WAIT 10
+.eqv JUMP_WAIT 8
+.eqv PLATFORM_WAIT 9
+
 .eqv QUICK_FALL_VALUE 1
 
 .eqv NO_JUMP 6
@@ -148,20 +151,41 @@ RESTART:
 # Pixel Register: $t0
 # Direction Register: $t2
 # Start platform counter
-
-
 	li $t1, 0
+	li $t2, 16380
+	addi $sp, $sp, -4 # Store intial old pixel iteration into stack
+	sw $t2, ($sp)
 ##########################################################################
-# ESSENTIALLY THE MAIN LOOP LABEL
+# KEEP $T0 AND $T1 FOR MAIN
+
+
+# ESSENTIALLY THE MAIN LOOP LABEL ########################################
 gravity_loop:
 #### STARTING PLATFORM #######
-	
-	jal 
-	addi $t1, $t1, 1
-	bne $t1, 85, reset_iteration
-	j normal_gravity
+	li $t2, 73160
+	addi $sp, $sp, -4
+	sw $t2, 0($sp)
+	jal GENERATE_PLATFORM
+
+	beq $t1, 285, reset_iteration
+	j no_reset
 reset_iteration:
 	li $t1, 0
+no_reset:
+	lw $t2, ($sp)
+	addi $sp, $sp, 4
+	
+	addi $sp, $sp, -4 # Load pixel value first
+	sw $t2, ($sp)
+	addi $sp, $sp, -4 # Load increment
+	sw $t1, ($sp)
+	jal PLATFORM_MOVEMENT
+	
+	addi $t1, $t1, 1 # increment counter
+
+	beq $s3, 999999, back_from_top
+	beq $s3, 999998, move_check_from_top
+	
 	j normal_gravity
 
 quick_fall:
@@ -206,6 +230,12 @@ skip_gravity:
 
 move_check:
 # Initialize key press
+	li $s3, 999998
+	j gravity_loop
+move_check_from_top:
+	li $v0, 32
+	li $a0, PLATFORM_WAIT # Wait 30 milliseconds
+	syscall
 	li $t9, 0xffff0000
 	lw $t8, 0($t9)
 	beq $t8, 1, keypress_happened_platform
@@ -290,11 +320,16 @@ respond_to_w_gravity:
 skip_gravity_paint:
 	j gravity_loop
 	
+	
 ############################################
 # TO RESPOND TO W CLICK AND JUMP
+##########################################
 respond_to_w:
 	li $s6, 0
 jump_loop:
+	li $s3, 999999 # Information register about jumping back to jump_loop
+	j gravity_loop
+back_from_top:
 	# Check if touched border or water
 	li $t2, 0x77
 	addi $sp, $sp, -4
@@ -322,7 +357,14 @@ jump_loop:
 	li $t9, 0xffff0000
 	lw $t8, 0($t9)
 	beq $t8, 1, keypress_happened_jumping
-	j jump_sleep
+jump_sleep:
+	li $v0, 32
+	li $a0, JUMP_WAIT # Wait 30 milliseconds
+	syscall
+	addi $s6, $s6, 1
+	bne $s6, JUMP_HEIGHT, jump_loop
+	li $s3, 0
+	j gravity_loop
 	
 keypress_happened_jumping:
 	lw $t2, 4($t9) # this assumes $t9 is set to 0xfff0000 from before
@@ -391,14 +433,10 @@ respond_to_d_jumping:
 
 respond_to_w_jumping:
 	# fill in 
+	j jump_sleep
 	
-jump_sleep:
-	li $v0, 32
-	li $a0, JUMP_WAIT # Wait 30 milliseconds
-	syscall
-	addi $s6, $s6, 1
-	bne $s6, JUMP_HEIGHT, jump_loop
-	j gravity_loop
+
+
 ##########################################################			
 END:
 
@@ -424,7 +462,6 @@ RANDOM_NUMBER:
 	jr $ra
 	
 DELETE_ROCK:
-	
 	lw $t6, 0($sp) # pop old pixel value off the stack
 	addi $sp, $sp, 4 # reclaim space
 	
@@ -641,8 +678,10 @@ rock_seven:
 TEST_PLATFORM:
 	lw $t6, 0($sp)
 	addi $sp, $sp, 4
+	addi $t2, $t6, 0
 	addi $t6, $t6, BASE_ADDRESS
 	
+
 	# Calculate original row
 	li $t8, 1024
 	li $t9, 4
@@ -656,7 +695,6 @@ TEST_PLATFORM:
 	li $t5, 0
 	addi $t5, $t4, 120
 test_loop:
-
 	##################################
 	# Calculate new row (if on new row)
 	li $t8, 1024
@@ -676,6 +714,10 @@ skip_test:
 	addi $t4, $t4, 4
 
 	bne $t4, $t5, test_loop
+
+	
+	addi $sp, $sp, -4
+	sw $t2, ($sp)
 	
 	jr $ra
 	
@@ -683,6 +725,11 @@ skip_test:
 DELETE_TEST_PLATFORM:
 	lw $t6, 0($sp)
 	addi $sp, $sp, 4
+	
+	addi $t2, $t6, 0 # Store old pixel value and re-output it
+	addi $sp, $sp, -4
+	sw $t2, ($sp)
+	
 	addi $t6, $t6, BASE_ADDRESS
 	
 	# Calculate original row
@@ -698,7 +745,6 @@ DELETE_TEST_PLATFORM:
 	li $t5, 0
 	addi $t5, $t4, 120
 test_delete_loop:
-
 	##################################
 	# Calculate new row (if on new row)
 	li $t8, 1024
@@ -1001,14 +1047,11 @@ return_can_move:
 	sw $t9, 0($sp)
 end_can_move:
 	jr $ra
+	
 
 ######################################################`
 PLATFORM_MOVEMENT:
 
-	# Store old $ra value
-	addi $sp, $sp, -4 # STORE LAST FUNC CALL ADDRESS
-	sw $ra, 0($sp)
-	
 	# REQUIREMENTS AND GIVENS
 	#	- Must use stack to keep track of randomized pixel value + offsets
 	#	- Must create a random integer from 1 to 90 (perhaps) to generate platforms on
@@ -1017,43 +1060,51 @@ PLATFORM_MOVEMENT:
 
 	# For reusability, load paramter to decide which image to display: 1 for platforms, 2 for enemies, platforms move at -12 but enemies move quicker at -24
 	
-	# Only paramter required is iteration number ( 85, -12 iterations )
-	lw $t2, ($sp)
-	addi $sp
+	# Only paramters required is iteration number ( 85, -12 iterations ) and old pixel value (for first iteration)
+	lw $t2, ($sp) # Load iteration
+	addi $sp, $sp, 4
+	
+	lw $t3, ($sp) # Load into $t3 from stack (SECOND PARAMETER)
+	addi $sp, $sp, 4
+
 	
 	# 0. First check if pixel is at its first iteration, if it is go to step 1, otherwise skip randomize step and load old pixel value
 	bge $t2, 1, old_pixel
 	# 1. Initialize new randomized pixel
 randomize:
-	li $t2, 16380
-	addi $sp, $sp,-4 # Load $t1 into stack
-	sw $t2, ($sp)
-	# 2. Load old pixel value
+	li $t3, 16380
+	# 2.Use old pixel input
 old_pixel:
-	lw $t2, ($sp) # Load into $t1 from stack
-	addi $sp, $sp, 4
+	# Store old $ra value
+	addi $sp, $sp, -4 # STORE LAST FUNC CALL ADDRESS
+	sw $ra, 0($sp)
 	
 	# 3. Shift randomized pixel (or platform) to the left by -12 and delete old platform
 	addi $sp, $sp, -4
-	sw $t2, ($sp)
+	sw $t3, ($sp)
 	jal DELETE_TEST_PLATFORM
-	addi $t1, $t1, -12
+	lw $t3, ($sp)
+	addi $sp, $sp, 4
 	
+	addi $t3, $t3, -4
+
 	# 4. Generate new platform
 	addi $sp, $sp, -4
-	sw $t2, ($sp)
+	sw $t3, ($sp)
 	jal TEST_PLATFORM
 	
-	
+	lw $t3, ($sp)
+	addi $sp, $sp, 4
+
 	# Load old $ra value
 	lw $ra, 0($sp)
 	addi $sp, $sp, 4
+	
 	# Load $t1 into stack
 	addi $sp, $sp, -4 
-	sw $t2, ($sp)
+	sw $t3, ($sp)
 	
 	jr $ra
-
 	
 ######################################################
 # DEALS WITH PLATFORMS
