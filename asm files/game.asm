@@ -985,7 +985,7 @@ picture_loop:
 	li $a2, 10            # Maximum number of bytes to read
 	syscall
 	
-	# Convert the ASCII string to a decimal value
+	# Convert the ASCII string to a decimal valuet
 	la $t6, you_lose_start        # Load the address of the string into $t6
 	addi $t6, $t6, 2      # Skip over the "0x" prefix
 	li $t7, 0             # Initialize decimal value to zero
@@ -1012,7 +1012,6 @@ common:
 	mflo $t7	      # Multiply current value by 16 (since we're reading in hex)
 	add $t7, $t7, $t8     # Add decimal value of current character
 	addi $t6, $t6, 1      # Move to `next character in string
-	
 	j loop
 	
 end_loop:
