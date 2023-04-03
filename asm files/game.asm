@@ -47,10 +47,7 @@
 
 .data
 
-bitmap_address: .space 1048576 # spacer to avoid overflow into data array
-
-	
-
+bitmap_address: .space 2097152 # spacer to avoid overflow into data array
 
 .eqv BASE_ADDRESS 0x10008000
 .eqv UNIT_WIDTH 4
@@ -80,69 +77,36 @@ bitmap_address: .space 1048576 # spacer to avoid overflow into data array
 .eqv UP -512
 .eqv DOWN 512
 
+you_lose:	.asciiz "youlose.txt"
+you_lose_yes: 	.asciiz "youloseyes.txt"
+you_lose_no: 	.asciiz "youloseno.txt"
+start_game:	.asciiz "startgame.txt"
 
-
-newline:	.asciiz "\n"
-you_lose_yes: .asciiz "youloseyes.txt"
-you_lose_no: .asciiz "youloseno.txt"
 you_lose_start:
-	.space 20
-
-
+	.asciiz "        "
 
 ##########################################################################
 # MAIN
 .text
-	li $sp, 0
+
 main:	
-GENERATE_BACKGROUND:
-	li $t0, BASE_ADDRESS
-# initialize outer_loop counter
-	li $t4, 0	
-outer_loop:
-# initialize inner_loop counter
-	li $t5, 0
-inner_loop:
-	# Check curent pixel and paint sky or sea depending on whether pixel is greater than 315
-	bgt $t4, 420, sea
-sky:	
-	li, $t1, 0x4dabf7
-	sw $t1, 0($t0)
-	j increment
-	
-sea:	
-	jal RANDOM_NUMBER
-	blt $a0, 4, dark_blue
-	blt $a0, 7, medium_blue
-light_blue:
-	li $t2, 0x052fab
-	j paint_sea
-medium_blue:
-	li $t2, 0x173eb0
-	j paint_sea
-dark_blue:
-	li $t2, 0x001a66
-paint_sea:	
-	sw $t2, 0($t0)
-	
-# increment loop counters
-increment:
-	addi $t0, $t0, 4
-	addi $t5, $t5, 4
-	blt $t5, 1024, inner_loop
-	
-	addi $t4, $t4, 4
-	blt $t4, 512, outer_loop
-	
-	
-##########################################################################
-# GAME START
+	li $sp, 0 # reset stack just in case
 RESTART:
+	jal GENERATE_BACKGROUND
+
+##########################################################################
+# Load start menu!!!!
+
+START:
+	la $t1, start_game
+	addi $sp $sp, -4
+	sw $t1, 0($sp)
+	li $t1, 0
 	addi $sp, $sp, -4
-	sw $t0, 0($sp)
-	jal DELETE_ROCK
+	sw $t1, 0($sp)	
+	jal LOAD_PICTURE
+
 	
-# GAME LOOP START
 	# dedicate $t0 to the beginning pixel character value
 	li $t0, BASE_ADDRESS
 	addi $t0, $t0, 66032
@@ -150,29 +114,50 @@ RESTART:
 	addi $sp, $sp, -4 # Load new pixel value
 	sw $t0, 0($sp)
 	jal GENERATE_ROCK
+	
+	jal LEVEL_1
+	
+start_menu:
+	li $t9, 0xffff0000
+	lw $t8, 0($t9)
+	beq $t8, 1, keypress_start_menu
+	j start_menu
+keypress_start_menu:
+	lw $t2, 4($t9) # this assumes $t9 is set to 0xfff0000 from before
+	beq $t2, 0x70, commence_game
+	j start_menu
+
 
 #########################################################################
-# Grey
-# Pixel Register: $t0
-# Direction Register: $t2
-# Start platform counter
+commence_game:
+
+	jal GENERATE_BACKGROUND
+	
+	addi $sp, $sp, -4
+	sw $t0, 0($sp)
+	jal DELETE_ROCK
+	
+	# dedicate $t0 to the beginning pixel character value
+	li $t0, BASE_ADDRESS
+	addi $t0, $t0, 66032
+	
+	addi $sp, $sp, -4 # Load new pixel value
+	sw $t0, 0($sp)
+	jal GENERATE_ROCK
+	
+	jal LEVEL_1
+
+
 	li $t1, 0
 	li $t2, 32764
 	addi $sp, $sp, -4 # Store intial old pixel iteration into stack
 	sw $t2, ($sp)
-##########################################################################
-# KEEP $T0 AND $T1 FOR MAIN
+	
 
 
-# ESSENTIALLY THE MAIN LOOP LABEL ########################################
 gravity_loop:
 
-
-#### STARTING PLATFORM #######
-	li $t2, 73160
-	addi $sp, $sp, -4
-	sw $t2, 0($sp)
-	jal GENERATE_PLATFORM
+	jal LEVEL_1
 
 	beq $t1, 255, reset_iteration
 	j no_reset
@@ -310,7 +295,7 @@ respond_to_a_gravity:
 	
 	# Paint left pixel black
 	addi $t5, $t0, 0
-	addi $t0, $t0, -16
+	addi $t0, $t0, -32
 	
 	addi $sp, $sp, -4
 	sw $t5, 0($sp)
@@ -336,7 +321,7 @@ respond_to_d_gravity:
 	
 	# Paint right pixel black
 	addi $t5, $t0, 0
-	addi $t0, $t0, 16
+	addi $t0, $t0, 32
 	
 	addi $sp, $sp, -4
 	sw $t5, 0($sp)
@@ -423,7 +408,7 @@ respond_to_a_jumping:
 	
 	# Paint upper pixel
 	addi $t5, $t0, 0
-	addi $t0, $t0, -16
+	addi $t0, $t0, -32
 	
 	addi $sp, $sp, -4
 	sw $t5, 0($sp)
@@ -451,7 +436,7 @@ respond_to_d_jumping:
 	# Paint right pixel black
 	
 	addi $t5, $t0, 0
-	addi $t0, $t0, 16
+	addi $t0, $t0, 32
 	
 	addi $sp, $sp, -4
 	sw $t5, 0($sp)
@@ -468,28 +453,16 @@ respond_to_w_jumping:
 	j jump_sleep
 	
 
-##########################################################			
+##################################################################
+# END GAME AND QUIT? OR RESTART
 END:
-
-
-	la $t1, you_lose_yes
+	la $t1, you_lose
 	addi $sp $sp, -4
 	sw $t1, 0($sp)
 	li $t1, 0
 	addi $sp, $sp, -4
 	sw $t1, 0($sp)	
 	jal LOAD_PICTURE	
-
-reset_menu:
-	li $t9, 0xffff0000
-	lw $t8, 0($t9)
-	beq $t8, 1, keypress_reset_menu
-	j reset_menu
-keypress_reset_menu:
-	lw $t2, 4($t9) # this assumes $t9 is set to 0xfff0000 from before
-	beq $t2, 0x61, load_yes # ASCII code of 'a' is 0x61
-	beq $t2, 0x64, load_no
-	j reset_menu
 
 load_yes:
 	la $t1, you_lose_yes
@@ -498,8 +471,18 @@ load_yes:
 	li $t1, 0
 	addi $sp, $sp, -4
 	sw $t1, 0($sp)	
-	jal LOAD_PICTURE	
-	j reset_menu
+	jal LOAD_PICTURE
+yes_menu:
+	li $t9, 0xffff0000
+	lw $t8, 0($t9)
+	beq $t8, 1, keypress_yes_menu
+	j yes_menu
+keypress_yes_menu:
+	lw $t2, 4($t9) # this assumes $t9 is set to 0xfff0000 from before
+	beq $t2, 0x64, load_no
+	beq $t2, 0x70, RESTART
+	j yes_menu
+
 load_no:
 	la $t1, you_lose_no
 	addi $sp $sp, -4
@@ -508,8 +491,17 @@ load_no:
 	addi $sp, $sp, -4
 	sw $t1, 0($sp)	
 	jal LOAD_PICTURE
-	j reset_menu
-
+	
+no_menu:
+	li $t9, 0xffff0000
+	lw $t8, 0($t9)
+	beq $t8, 1, keypress_no_menu
+	j no_menu
+keypress_no_menu:
+	lw $t2, 4($t9) # this assumes $t9 is set to 0xfff0000 from before
+	beq $t2, 0x61, load_yes # ASCII code of 'a' is 0x61
+	beq $t2, 0x70, terminate
+	j no_menu
 
 
 terminate:
@@ -518,14 +510,6 @@ terminate:
 ##########################################################
 # NECESSARY FUNCTIONS
 
-RANDOM_NUMBER:
-	#deals with background ocean randomize
-	li $v0, 42
-	li $a0, 0
-	li $a1, 10
-	syscall
-	jr $ra
-	
 DELETE_ROCK:
 	lw $t6, 0($sp) # pop old pixel value off the stack
 	addi $sp, $sp, 4 # reclaim space
@@ -744,7 +728,6 @@ TEST_PLATFORM:
 	addi $t2, $t6, 0
 	addi $t6, $t6, BASE_ADDRESS
 	
-
 	# Calculate original row
 	li $t8, 1024
 	li $t9, 4
@@ -775,15 +758,11 @@ test_loop:
 skip_test:
 	addi $t6, $t6, 4
 	addi $t4, $t4, 4
-
 	bne $t4, $t5, test_loop
-
-	
 	addi $sp, $sp, -4
 	sw $t2, ($sp)
 	
 	jr $ra
-	
 	
 DELETE_TEST_PLATFORM:
 	lw $t6, 0($sp)
@@ -958,7 +937,6 @@ cloud_delete_four:
 	jr $ra
 	
 
-	
 
 ###########################################
 # Fucntion for displaying a picture in the bitmap display
@@ -982,51 +960,56 @@ picture_loop:
 	li $v0, 14            # System call code for read
 	move $a0, $t5         # Load the file descriptor into $a0
 	la $a1, you_lose_start       # Load the start address of the buffer into $a1
-	li $a2, 10            # Maximum number of bytes to read
+	li $a2, 8            # Maximum number of bytes to read
 	syscall
 	
 	# Convert the ASCII string to a decimal valuet
-	la $t6, you_lose_start        # Load the address of the string into $t6
+	la $t6, you_lose_start        # Load the address of the buffer string into $t6
 	addi $t6, $t6, 2      # Skip over the "0x" prefix
 	li $t7, 0             # Initialize decimal value to zero
 loop:
-	lbu $t8, ($t6) # Load current byte into $t8
-	beqz $t8, end_loop # Exit loop if current byte is null terminator
-	andi $t9, $t8, 0xFF # Convert signed byte to unsigned byte value
-	sub $t9, $t9, 48 # Convert ASCII code for '0' to decimal value
-	bge $t9, 17, sub_a # If character is a-f, subtract 17 to convert to decimal
-	bge $t9, 10, sub_A # If character is A-F, subtract 10 to convert to decimal
-	li $t3, 16
-	mult $t7, $t3 # Multiply current value by 16 (since we're reading in hex)
-	mflo $t7
-	add $t7, $t7, $t9 # Add decimal value of current character
-	addi $t6, $t6, 1 # Move to next byte in string
-	j loop
+    	lbu $t8, ($t6)         # Load current character into $t8
+    	beqz $t8, end_loop     # Exit loop if current character is null terminator
+
+    	bge $t8, 97, sub_a     # If character is a-f, subtract 87 to convert to decimal
+    	bge $t8, 65, sub_A     # If character is A-F, subtract 55 to convert to decimal
+    	bge $t8, 48, sub_0   # If character is 0-9, jump to common
+    	
+    	# Character is invalid, so terminate the program
+    	li $v0, 10             # System call code for exit
+    	li $a0, 1              # Return value indicating error
+    	syscall
+    	j end_loop
+
 sub_a:
-	sub $t9, $t9, 39 # Subtract 39 to convert a-f to decimal
-	j common
+    	sub $t9, $t8, 87       # Subtract 87 to convert a-f to decimal
+    	j common
+
 sub_A:
-	sub $t9, $t9, 7 # Subtract 7 to convert A-F to decimal
+    	sub $t9, $t8, 55       # Subtract 55 to convert A-F to decimal
+    	j common
+
+sub_0:
+	sub $t9, $t8, 48       # Convert ASCII code to decimal value
+	j common
+
 common:
-	li $t3, 16
-	mult $t7, $t3
-	mflo $t7 # Multiply current value by 16 (since we're reading in hex)
-	add $t7, $t7, $t9 # Add decimal value of current character
-	addi $t6, $t6, 1 # Move to next byte in string
-	j loop
+    	li $t3, 16
+	multu $t7, $t3         # Multiply current value by 16 (since we're reading in hex) 
+	mflo $t3	
+	addu $t7, $t3, $t9   	 	
+    	addi $t6, $t6, 1       # Move to next character in string
+    	j loop
 end_loop:
-
-	#li $v0, 1
-	#addi $a0, $t7, 0
-	#syscall
-	#j terminate
-
-	beq $t7, 0x767676, skip_draw
+	beq $t7, 5197647, skip_draw
 	sw $t7, ($t1)
+	
 skip_draw:
 	addi $t1, $t1, 4
 	addi $t4, $t4, 4
 	bne $t4, 131072 , picture_loop
+	
+	
 
 	# Close the file
 	li $v0, 16            # System call code for close
@@ -1138,11 +1121,11 @@ PLATFORM_MOVEMENT:
 	addi $sp, $sp, 4
 
 	
-	# 0. First check if pixel is at its first iteration, if it is go to step 1, otherwise skip randomize step and load old pixel value
+# 0. First check if pixel is at its first iteration, if it is go to step 1, otherwise skip randomize step and load old pixel value
     	
 	bge $t2, 1, old_pixel
 	
-	# 1. Initialize new randomized pixel
+# 1. Initialize new randomized pixel
 randomize:
 
 	li $v0, 42
@@ -1157,13 +1140,13 @@ randomize:
 	addi $t3, $t3, -4
 	
 	
-	# 2.Use old pixel input
+# 2.Use old pixel input
 old_pixel:
-	# Store old $ra value
+# Store old $ra value
 	addi $sp, $sp, -4 # STORE LAST FUNC CALL ADDRESS
 	sw $ra, 0($sp)
 	
-	# 3. Shift randomized pixel (or platform) to the left by -12 and delete old platform
+# 3. Shift randomized pixel (or platform) to the left by -12 and delete old platform
 	
 	addi $sp, $sp, -4
 	sw $t3, ($sp)
@@ -1173,7 +1156,7 @@ old_pixel:
 	addi $sp, $sp, 4
 	
 	addi $t3, $t3, -4
-	# 4. Generate new platform
+# 4. Generate new platform
 	addi $sp, $sp, -4
 	sw $t3, ($sp)
 	jal TEST_PLATFORM
@@ -1203,11 +1186,6 @@ LEVEL_1:
 	sw $t2, 0($sp)
 	jal GENERATE_PLATFORM
 	
-	li $t2, 45520
-	addi $sp, $sp, -4
-	sw $t2, 0($sp)
-	jal GENERATE_PLATFORM
-
 	li $t2, 61632
 	addi $sp, $sp, -4
 	sw $t2, 0($sp)
@@ -1225,5 +1203,47 @@ LEVEL_1:
 	jr $ra
 ##########################################################################
 	
+GENERATE_BACKGROUND:
+	li $t0, BASE_ADDRESS
+# initialize outer_loop counter
+	li $t4, 0	
+outer_loop:
+# initialize inner_loop counter
+	li $t5, 0
+inner_loop:
+	# Check curent pixel and paint sky or sea depending on whether pixel is greater than 315
+	bgt $t4, 420, sea
+sky:	
+	li, $t1, 0x4dabf7
+	sw $t1, 0($t0)
+	j increment
 	
+sea:	
+	li $v0, 42
+	li $a0, 0
+	li $a1, 10
+	syscall
+	blt $a0, 4, dark_blue
+	blt $a0, 7, medium_blue
+light_blue:
+	li $t2, 0x052fab
+	j paint_sea
+medium_blue:
+	li $t2, 0x173eb0
+	j paint_sea
+dark_blue:
+	li $t2, 0x001a66
+paint_sea:	
+	sw $t2, 0($t0)
+	
+# increment loop counters
+increment:
+	addi $t0, $t0, 4
+	addi $t5, $t5, 4
+	blt $t5, 1024, inner_loop
+	
+	addi $t4, $t4, 4
+	blt $t4, 512, outer_loop
+	
+	jr $ra
 
