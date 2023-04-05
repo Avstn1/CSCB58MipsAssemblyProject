@@ -165,8 +165,8 @@ commence_game:
 
 	li $t1, 0
 	li $t2, 32764
-	#addi $sp, $sp, -4 # Store intial old bird pixel iteration into stack
-	#sw $t2, ($sp)
+	addi $sp, $sp, -4 # Store intial old bird pixel iteration into stack
+	sw $t2, ($sp)
 	
 ##########################################
 # True Game Loop
@@ -177,27 +177,27 @@ gravity_loop:
 	
 	
 	# deal with bird movement
-#	beq $t1, 255, reset_iteration
-#	j no_reset
-#reset_iteration:
-#	li $t1, 0
-#	lw $t2, ($sp)
-#	addi $sp, $sp, -4
-#	sw $t2, ($sp)
-#	jal DELETE_TEST_PLATFORM
-#	addi $sp, $sp, 4
-#no_reset:
-#	lw $t2, ($sp) # last loaded in platform movement? 
-#	addi $sp, $sp, 4
-#	
-#	addi $sp, $sp, -4 # Load pixel value first
-#	sw $t2, ($sp)
-#	addi $sp, $sp, -4 # Load increment
-#	sw $t1, ($sp)
-#	jal PLATFORM_MOVEMENT
+	beq $t1, 255, reset_iteration
+	j no_reset
+reset_iteration:
+	li $t1, 0
+	lw $t2, ($sp)
+	addi $sp, $sp, -4
+	sw $t2, ($sp)
+	jal DELETE_TEST_PLATFORM
+	addi $sp, $sp, 4
+no_reset:
+	lw $t2, ($sp) # last loaded in platform movement? 
+	addi $sp, $sp, 4
+	
+	addi $sp, $sp, -4 # Load pixel value first
+	sw $t2, ($sp)
+	addi $sp, $sp, -4 # Load increment
+	sw $t1, ($sp)
+	jal PLATFORM_MOVEMENT
 	
 	
-#	addi $t1, $t1, 1 # increment counter
+	addi $t1, $t1, 1 # increment counter
 	beq $s3, 999999, back_from_top
 	beq $s3, 999998, move_check_from_top
 # check if on platform
@@ -748,54 +748,91 @@ rock_seven:
 	jr $ra
 	
 TEST_PLATFORM:
-	lw $t6, 0($sp)
-	addi $sp, $sp, 4
-	
-	addi $t2, $t6, 0 # Store old pixel value and re-output it
-	addi $sp, $sp, -4
-	sw $t2, ($sp)
-	
-	addi $sp, $sp, -4 # load old ra value into stack
-	sw $ra, ($sp)
-	
-	la $t1, bird_left
-	addi $sp $sp, -4
-	sw $t1, 0($sp)
-	addi $t1, $t2, 0
-	addi $sp, $sp, -4
-	sw $t1, 0($sp)	
-	jal LOAD_PICTURE
-	
-	# Load old $ra value
-	lw $ra, 0($sp)
-	addi $sp, $sp, 4
-	
-	jr $ra
-	
-DELETE_TEST_PLATFORM:
-	lw $t6, 0($sp)
-	addi $sp, $sp, 4
-	
-	addi $t2, $t6, 0 # Store old pixel value and re-output it
-	addi $sp, $sp, -4
-	sw $t2, ($sp)
-	
-	addi $sp, $sp, -4 # load old ra value into stack
-	sw $ra, ($sp)
-	
-	la $t1, bird_left_delete
-	addi $sp $sp, -4
-	sw $t1, 0($sp)
-	addi $t1, $t2, 0
-	addi $sp, $sp, -4
-	sw $t1, 0($sp)	
-	jal LOAD_PICTURE
+    	lw $t6, 0($sp)
+    	addi $sp, $sp, 4
+    	addi $t2, $t6, 0
+    	addi $t6, $t6, BASE_ADDRESS
+    	
+	# Calculate original row
+	li $t8, 1024
+	li $t9, 4
+	mult $t8, $t9
+    	mflo $t8
+    	div $t6, $t8
+    	mflo $t3
 
-	# Load old $ra value
-	lw $ra, 0($sp)
-	addi $sp, $sp, 4
+    	li $t7, 0x8e8e8e
+    	li $t4, 0
+    	li $t5, 0
+    	addi $t5, $t4, 120
+test_loop:
+    	##################################
+    	# Calculate new row (if on new row)
+    	li $t8, 1024
+    	li $t9, 4
+    	mult $t8, $t9
+    	mflo $t8
+    	div $t6, $t8
+    	mflo $t8
+    	##################################
+
+    	blt $t8, $t3, skip_test
+    	bgt $t8, $t3, skip_test
+
+    	sw $t7, 0($t6)
+skip_test:
+    	addi $t6, $t6, 4
+    	addi $t4, $t4, 4
+
+   	bne $t4, $t5, test_loop
+    	addi $sp, $sp, -4
+    	sw $t2, ($sp)
+
+    	jr $ra
+
+
+DELETE_TEST_PLATFORM:
+    	lw $t6, 0($sp)
+    	addi $sp, $sp, 4
+    	addi $t2, $t6, 0 # Store old pixel value and re-output it
+    	addi $sp, $sp, -4
+    	sw $t2, ($sp)
+    	addi $t6, $t6, BASE_ADDRESS
+
+
+    	# Calculate original row
+    	li $t8, 1024
+    	li $t9, 4
+    	mult $t8, $t9
+    	mflo $t8
+    	div $t6, $t8
+    	mflo $t3
+
+    	li $t7, 0x4dabf7
+    	li $t4, 0
+    	li $t5, 0
+    	addi $t5, $t4, 120
+test_delete_loop:
+    	##################################
+    	# Calculate new row (if on new row)
+    	li $t8, 1024
+    	li $t9, 4
+    	mult $t8, $t9
+    	mflo $t8
+    	div $t6, $t8
+    	mflo $t8
+    	##################################
 	
-	jr $ra
+	blt $t8, $t3, skip_delete_test
+	bgt $t8, $t3, skip_delete_test
+
+    	sw $t7, 0($t6)
+skip_delete_test:
+    	addi $t6, $t6, 4
+    	addi $t4, $t4, 4
+    	bne $t4, $t5, test_delete_loop
+
+    	jr $ra
 	
 
 GENERATE_PLATFORM:
@@ -925,20 +962,23 @@ cloud_delete_four:
 	
 	jr $ra
 	
+	
+GENERATE_BIRD:
+	la
+	
+	
 
 
 ###########################################
 # Fucntion for displaying a picture in the bitmap display
 LOAD_PICTURE:
 	lw $t2, 0($sp)  # offset
-	lw $t0, 4($sp)  # address of image filename
+	lw $t8, 4($sp)  # address of image filename
 	addi $sp, $sp, 8
-	li $t1, BASE_ADDRESS
-	add $t1, $t1, $t2
-
+	add $t2, $t2, BASE_ADDRESS
 	# Open the input file for reading
 	li $v0, 13         # System call code for open
-	la $a0, ($t0)      # Load the filename address into $a0
+	la $a0, ($t8)      # Load the filename address into $a0
 	li $a1, 0          # Flags (0 for read-only)
 	li $a2, 0          # Mode (ignored for read-only)
 	syscall
@@ -992,10 +1032,10 @@ common:
     	j loop
 end_loop:
 	beq $t7, 5197647, skip_draw
-	sw $t7, ($t1)
+	sw $t7, ($t2)
 	
 skip_draw:
-	addi $t1, $t1, 4
+	addi $t2, $t2, 4
 	addi $t4, $t4, 4
 	bne $t4, 131072 , picture_loop
 	
@@ -1129,7 +1169,6 @@ randomize:
 	mflo $t3
 	addi $t3, $t3, -4
 	
-	
 # 2.Use old pixel input
 old_pixel:
 # Store old $ra value
@@ -1145,7 +1184,7 @@ old_pixel:
 	lw $t3, ($sp)
 	addi $sp, $sp, 4
 	
-	addi $t3, $t3, -16
+	addi $t3, $t3, -8
 # 4. Generate new platform
 	addi $sp, $sp, -4
 	sw $t3, ($sp)
@@ -1185,7 +1224,6 @@ LEVEL_1:
 	addi $sp, $sp, -4
 	sw $t2, 0($sp)
 	jal GENERATE_PLATFORM
-
 
 	lw $ra, 0($sp)
 	addi $sp, $sp, 4
