@@ -47,7 +47,7 @@
 
 .data
 
-bitmap_address: .space 2097152 # spacer to avoid overflow into data array
+bitmap_address: .space 524288# spacer to avoid overflow into data array
 
 .eqv BASE_ADDRESS 0x10008000
 .eqv UNIT_WIDTH 4
@@ -77,6 +77,21 @@ bitmap_address: .space 2097152 # spacer to avoid overflow into data array
 .eqv UP -512
 .eqv DOWN 512
 
+
+double_jump:	.word 4
+	
+platform_pixel: .word 4	
+iteration: 	.word 4
+	
+pebble_pixel:	.word 4
+pebble_collected: 
+		.word 4
+		
+score:		.word 4
+health:		.word 4
+
+enemy_pass:	.word 4
+
 you_lose:	.asciiz "youlose.txt"
 you_lose_yes: 	.asciiz "youloseyes.txt"
 you_lose_no: 	.asciiz "youloseno.txt"
@@ -84,12 +99,12 @@ start_game:	.asciiz "startgame.txt"
 delete_start_game:
 		.asciiz "deletestartgame.txt"
 		
-bird_left:	.asciiz "birdleft.txt"
-bird_left_delete:
-		.asciiz "birdleftdelete.txt"
+
+newline:	.asciiz "\n"
 
 you_lose_start:
 	.asciiz "        "
+	
 
 ##########################################################################
 # MAIN
@@ -107,6 +122,9 @@ START:
 
 	jal LEVEL_1
 	
+##########################################################################
+
+
 	# dedicate $t0 to the beginning pixel character value
 	li $t0, BASE_ADDRESS
 	addi $t0, $t0, 66032
@@ -134,10 +152,8 @@ keypress_start_menu:
 	beq $t2, 0x70, commence_game
 	j start_menu
 
-
 #########################################################################
 commence_game:
-
 	la $t1, delete_start_game
 	addi $sp $sp, -4
 	sw $t1, 0($sp)
@@ -162,45 +178,193 @@ commence_game:
 	jal GENERATE_ROCK
 	
 	jal LEVEL_1
+	
+	
+# Memory storing
+	# Store pebble pixel into memory
+	la $t3, pebble_pixel
+	li $t9, BASE_ADDRESS
+	addi $t9, $t9, 59904
+	sw $t9, 0($t3)
+	
+	# Store pebble collected boolean into memory
+	la $t3, pebble_collected
+	li $t4, 0
+	sw $t4, 0($t3)
+	
+	# Store score into memory
+	la $t3, score
+	li $t4, 0
+	sw $t4, 0($t3)
+		
+	# Store health into memory	
+	la $t3, health
+	li $t4, 3
+	sw $t4, 0($t3)
 
-	li $t1, 0
-	li $t2, 32764
-	addi $sp, $sp, -4 # Store intial old bird pixel iteration into stack
-	sw $t2, ($sp)
+	# Get memory of pebble pixel and address
+	la $t3, pebble_pixel
+	la $t4, pebble_collected
+	lw $t3, 0($t3)
+	lw $t4, 0($t4)
+	
+	addi $sp, $sp, -4 # Load pebble boolean into stack 
+	sw $t4, 0($sp)
+	addi $sp, $sp, -4 # Load pebble pixel into stack
+	sw $t3, 0($sp)
+	jal GENERATE_PEBBLE
+	
+	la $t3, double_jump
+	li $t4, 0
+	sw $t4, 0($t3)
+	
+	# Store randomized pebble pixel in stack
+	li $t3, 1000
+	la $t4, platform_pixel
+	sw $t3, 0($t4)
+	
+	li $t1, BASE_ADDRESS
+	addi $t1, $t1, 32764
 	
 ##########################################
 # True Game Loop
-	# PRINT PRINT PRINT
 
 gravity_loop:
+
+	
+# Check player enemy collision
+	la $t5, enemy_pass # let enemy pass a little bit otherwise you will lose right away
+	lw $t5, ($t5)
+	bgt $t5, 0, LEVEL1
+	
+	addi $sp, $sp, -4 # load pebble pixel value
+	sw $t1, 0($sp)
+	addi $sp, $sp, -4 # load rock pixel value
+	sw $t0, 0($sp)
+	jal PEBBLE_COLLECTED
+	
+	la $t5, pebble_collected
+	lw $t5, 0($t5)
+	beq $t5, 1, decrease_health
+	
+	j LEVEL1
+decrease_health:
+	# allows enemy to pass without fully damaging rock
+	la $t5, enemy_pass
+	li $t6, 10
+	sw $t6, 0($t5)
+
+	la $t5, pebble_collected
+	li $t6, 0
+	sw $t6, 0($t5)
+
+	la $t5, health
+	lw $t6, 0($t5)
+	addi $t6, $t6, -1
+	sw $t6, 0($t5)
+	
+# Check score
+
+# Level spawn
+LEVEL1:
+	
+	la $t5, enemy_pass
+	lw $t6, 0($t5)
+	addi $t6, $t6, -1
+	sw $t6, 0($t5)
+	
 	jal LEVEL_1
 	
+	jal DISPLAY_SCORE
 	
-	# deal with bird movement
-	beq $t1, 255, reset_iteration
+	jal DISPLAY_HEALTH
+	
+	# Check health
+	la $t3, health
+	lw $t3, 0($t3)
+	beq $t3 ,$zero, END
+	
+		
+			
+skip_levels:	
+############################################################
+# Pebble Spawning
+	la $t5, pebble_pixel
+	lw $t4, 0($t5)
+		
+	addi $sp, $sp, -4 # load pebble pixel value
+	sw $t4, 0($sp)
+	addi $sp, $sp, -4 # load rock pixel value
+	sw $t0, 0($sp)
+	jal PEBBLE_COLLECTED
+	
+	la $t4, pebble_pixel
+	lw $t6, 0($t4)
+	
+	la $t5, pebble_collected
+	lw $t5, 0($t5)
+		
+	addi $sp, $sp, -4
+	sw $t5, 0($sp)
+	addi $sp, $sp, -4
+	sw $t6, 0($sp)
+	jal GENERATE_PEBBLE
+	
+	
+##########################################
+#enemy_spawn
+	# Deal with enemy movement
+		
+	la $t3, iteration
+	lw $t3, 0($t3)
+	beq $t3, 127, reset_iteration
 	j no_reset
 reset_iteration:
-	li $t1, 0
-	lw $t2, ($sp)
+
 	addi $sp, $sp, -4
-	sw $t2, ($sp)
-	jal DELETE_TEST_PLATFORM
-	addi $sp, $sp, 4
+	sw $t1, 0($sp)
+	jal DELETE_ENEMY
+
+	la $t3, iteration
+	li $t4, 0
+	sw $t4, 0($t3)
+	
+	li $v0, 42
+	li $a0, 0
+	li $a1, 70
+	syscall
+	
+	addi $t3, $a0, 20
+	li $t4, 1024
+	mult $t3, $t4
+	mflo $t3
+	addi $t3, $t3, -16 # Randomized pixel will be at the right edge
+	addi $t3, $t3, BASE_ADDRESS
+	addi $t1, $t3, 0
+	
 no_reset:
-	lw $t2, ($sp) # last loaded in platform movement? 
-	addi $sp, $sp, 4
+
+	addi $sp, $sp, -4
+	sw $t1, 0($sp)
+	jal DELETE_ENEMY
 	
-	addi $sp, $sp, -4 # Load pixel value first
-	sw $t2, ($sp)
-	addi $sp, $sp, -4 # Load increment
-	sw $t1, ($sp)
-	jal PLATFORM_MOVEMENT
+	addi $t1, $t1, -8
 	
+	addi $sp, $sp, -4
+	sw $t1, 0($sp)
+	jal GENERATE_ENEMY
 	
-	addi $t1, $t1, 1 # increment counter
+	la $t5, iteration
+	lw $t4, 0($t5)
+	addi $t4, $t4, 1
+	sw $t4, 0($t5)
+	
+
 	beq $s3, 999999, back_from_top
 	beq $s3, 999998, move_check_from_top
-# check if on platform
+	
+############################################################
+# Platform Check
 	li $t2, GRAVITY_TRUE
 	addi $sp, $sp, -4
 	sw $t2, 0($sp) # Load current move
@@ -220,7 +384,7 @@ quick_fall:
 # DEALS WITH PLAYER MOVEMENT
 normal_gravity:
 	li $v0, 32
-	li $a0, GRAVITY_WAIT # Wait 15 milliseconds
+	li $a0, GRAVITY_WAIT # Wait 32 mss
 	syscall
 skip_gravity:
 	li $t2, GRAVITY_TRUE
@@ -234,7 +398,7 @@ skip_gravity:
 	addi $sp, $sp, 4
 
 	beq $t5, 0, move_check
-
+skip_move_check:
 	# Paint below pixel black
 	addi $t5, $t0, 0
 	addi $t0, $t0, 1024
@@ -255,12 +419,20 @@ skip_gravity:
 
 move_check: # used to check for move whiile on platform
 # Initialize key press
+	la $t4, double_jump
+	li $t5, 0
+	sw $t5, 0($t4)
+	
 	li $s3, 999998
 	j gravity_loop
 move_check_from_top:
 	li $v0, 32
-	li $a0, PLATFORM_WAIT # Wait 30 milliseconds
+	li $a0, PLATFORM_WAIT # Wait 32 milliseconds
 	syscall
+	
+	addi $sp, $sp, -4 # load new pixel value
+	sw $t0, 0($sp)
+	jal GENERATE_ROCK
 	
 	li $t2, GRAVITY_TRUE
 	addi $sp, $sp, -4
@@ -277,6 +449,7 @@ move_check_from_top:
 	li $t9, 0xffff0000
 	lw $t8, 0($t9)
 	beq $t8, 1, keypress_happened_platform
+	
 	j move_check
 	
 keypress_happened_gravity:
@@ -284,6 +457,7 @@ keypress_happened_gravity:
 	beq $t2, 0x61, respond_to_a_gravity # ASCII code of 'a' is 0x61
 	beq $t2, 0x64, respond_to_d_gravity # ASCII code of 'd' is 0x64 
 	beq $t2, 0x73, quick_fall
+	beq $t2, 0x77, respond_to_w_gravity
 	#beq $t2, 0x66, FIRE_PEBBLE
 	beq $t2, 0x70, END
 	j gravity_loop
@@ -292,7 +466,8 @@ keypress_happened_platform:
 	lw $t2, 4($t9) # this assumes $t9 is set to 0xfff0000 from before
 	beq $t2, 0x61, respond_to_a_gravity # ASCII code of 'a' is 0x61
 	beq $t2, 0x64, respond_to_d_gravity # ASCII code of 'd' is 0x64 
-	beq $t2, 0x77, respond_to_w_gravity # ASCII code of 'w' is 0x77 
+	beq $t2, 0x73, skip_move_check
+	beq $t2, 0x77, respond_to_w # ASCII code of 'w' is 0x77 
 	#beq $t2, 0x66, FIRE_PEBBLE
 	beq $t2, 0x70, END
 	j gravity_loop
@@ -351,16 +526,24 @@ respond_to_d_gravity:
 	j gravity_loop
 
 respond_to_w_gravity:
+	la $t3, double_jump
+	lw $t3, 0($t3)
+	bge $t3, 2, gravity_loop
 	j respond_to_w
+
 	
 ############################################
 # TO RESPOND TO W CLICK AND JUMP
 ##########################################
 respond_to_w:
+	la $t4, double_jump
+	addi $t5, $t5, 1
+	sw $t5, 0($t4)
+jumped_once:
 	li $s6, 0
 jump_loop:
 	li $s3, 999999 # Information register about jumping back to jump_loop
-	j gravity_loop
+	j gravity_loop # jump to main loop to let enemies and platform spawn mid jump
 back_from_top:
 	li $s3, 0
 	# Check if touched border or water
@@ -373,8 +556,7 @@ back_from_top:
 	lw $t5, 0($sp)
 	addi $sp, $sp, 4
 	
-	beq $t5, 0, gravity_loop # don't paint to screen if at border ($t5 == 0)
-	
+	beq $t5, 0, gravity_loop # don't paint to screen if at border ($t5 == 0)	
 	beq $t5, NO_JUMP, gravity_loop
 
 	addi $t5, $t0, 0
@@ -404,9 +586,8 @@ keypress_happened_jumping:
 	lw $t2, 4($t9) # this assumes $t9 is set to 0xfff0000 from before
 	beq $t2, 0x61, respond_to_a_jumping # ASCII code of 'a' is 0x61
 	beq $t2, 0x64, respond_to_d_jumping # ASCII code of 'd' is 0x64
-	beq $t2, 0x73, gravity_loop # jump cancel
-	#beq $t2, 0x66, FIRE_PEBBLE
-	#beq $t2, 0x77, respond_to_w_jumping # ASCII code of 'w' is 0x77
+	beq $t2, 0x73, respond_to_s_jumping # jump cancel
+	beq $t2, 0x77, respond_to_w_jumping
 	beq $t2, 0x70, END
 	j jump_sleep
 	
@@ -465,17 +646,18 @@ respond_to_d_jumping:
 	jal GENERATE_ROCK
 
 	j jump_sleep
-
+	
 respond_to_w_jumping:
-	# fill in 
-	j jump_sleep
+	la $t4, double_jump
+	lw $t6, 0($t4)
+	bge $t6, 2, jump_sleep
+	addi $t6, $t6, 1
+	sw $t6, 0($t4)
+	j respond_to_w
 	
-	
-	
-######################################################
-
-	
-
+respond_to_s_jumping:
+	li $s3, 0
+	j gravity_loop
 ##################################################################
 # END GAME AND QUIT? OR RESTART
 END:
@@ -530,8 +712,6 @@ terminate:
 	syscall
 	
 	
-####################################################################################################################
-####################################################################################################################
 ####################################################################################################################
 # NECESSARY FUNCTIONS
 
@@ -732,7 +912,7 @@ rock_six:
 	addi $t4, $t4, 4
 	bne $t4, $t5, rock_six
 	sw $t7, 0($t6)
-	
+
 	addi $t6, $t6, 992
 	sw $t7, 0($t6)
 	addi $t6, $t6, 4
@@ -747,94 +927,19 @@ rock_seven:
 
 	jr $ra
 	
-TEST_PLATFORM:
-    	lw $t6, 0($sp)
-    	addi $sp, $sp, 4
-    	addi $t2, $t6, 0
-    	addi $t6, $t6, BASE_ADDRESS
-    	
+################################################################
+
 	# Calculate original row
-	li $t8, 1024
-	li $t9, 4
-	mult $t8, $t9
-    	mflo $t8
-    	div $t6, $t8
-    	mflo $t3
+	#li $t8, 1024
+	#li $t9, 4
+	#mult $t8, $t9
+    	#mflo $t8
+    	#div $t6, $t8
+    	#mflo $t3
 
-    	li $t7, 0x8e8e8e
-    	li $t4, 0
-    	li $t5, 0
-    	addi $t5, $t4, 120
-test_loop:
-    	##################################
-    	# Calculate new row (if on new row)
-    	li $t8, 1024
-    	li $t9, 4
-    	mult $t8, $t9
-    	mflo $t8
-    	div $t6, $t8
-    	mflo $t8
-    	##################################
-
-    	blt $t8, $t3, skip_test
-    	bgt $t8, $t3, skip_test
-
-    	sw $t7, 0($t6)
-skip_test:
-    	addi $t6, $t6, 4
-    	addi $t4, $t4, 4
-
-   	bne $t4, $t5, test_loop
-    	addi $sp, $sp, -4
-    	sw $t2, ($sp)
-
-    	jr $ra
-
-
-DELETE_TEST_PLATFORM:
-    	lw $t6, 0($sp)
-    	addi $sp, $sp, 4
-    	addi $t2, $t6, 0 # Store old pixel value and re-output it
-    	addi $sp, $sp, -4
-    	sw $t2, ($sp)
-    	addi $t6, $t6, BASE_ADDRESS
-
-
-    	# Calculate original row
-    	li $t8, 1024
-    	li $t9, 4
-    	mult $t8, $t9
-    	mflo $t8
-    	div $t6, $t8
-    	mflo $t3
-
-    	li $t7, 0x4dabf7
-    	li $t4, 0
-    	li $t5, 0
-    	addi $t5, $t4, 120
-test_delete_loop:
-    	##################################
-    	# Calculate new row (if on new row)
-    	li $t8, 1024
-    	li $t9, 4
-    	mult $t8, $t9
-    	mflo $t8
-    	div $t6, $t8
-    	mflo $t8
-    	##################################
 	
-	blt $t8, $t3, skip_delete_test
-	bgt $t8, $t3, skip_delete_test
-
-    	sw $t7, 0($t6)
-skip_delete_test:
-    	addi $t6, $t6, 4
-    	addi $t4, $t4, 4
-    	bne $t4, $t5, test_delete_loop
-
-    	jr $ra
-	
-
+###########################################################################
+# Platform generation
 GENERATE_PLATFORM:
 	lw $t6, 0($sp) # load the offset
 	addi $sp, $sp, 4
@@ -962,11 +1067,6 @@ cloud_delete_four:
 	
 	jr $ra
 	
-	
-GENERATE_BIRD:
-	la
-	
-	
 
 
 ###########################################
@@ -978,7 +1078,7 @@ LOAD_PICTURE:
 	add $t2, $t2, BASE_ADDRESS
 	# Open the input file for reading
 	li $v0, 13         # System call code for open
-	la $a0, ($t8)      # Load the filename address into $a0
+	la $a0, 0($t8)      # Load the filename address into $a0
 	li $a1, 0          # Flags (0 for read-only)
 	li $a2, 0          # Mode (ignored for read-only)
 	syscall
@@ -998,7 +1098,7 @@ picture_loop:
 	addi $t6, $t6, 2      # Skip over the "0x" prefix
 	li $t7, 0             # Initialize decimal value to zero
 loop:
-    	lbu $t8, ($t6)         # Load current character into $t8
+    	lbu $t8, 0($t6)         # Load current character into $t8
     	beqz $t8, end_loop     # Exit loop if current character is null terminator
 
     	bge $t8, 97, sub_a     # If character is a-f, subtract 87 to convert to decimal
@@ -1032,15 +1132,13 @@ common:
     	j loop
 end_loop:
 	beq $t7, 5197647, skip_draw
-	sw $t7, ($t2)
+	sw $t7, 0($t2)
 	
 skip_draw:
 	addi $t2, $t2, 4
 	addi $t4, $t4, 4
 	bne $t4, 131072 , picture_loop
 	
-	
-
 	# Close the file
 	li $v0, 16            # System call code for close
 	move $a0, $t5         # Load the file descriptor into $a0
@@ -1051,13 +1149,291 @@ skip_draw:
 
 ################################################################
 GENERATE_ENEMY:
+	lw $t2, 0($sp) # load enemy pixel value 
+	addi $sp, $sp, 4
+
+	li $t6, 0x000000
+	li $t4, 0
+enemy1_loop:
+	sw $t6, 0($t2)
+	addi $t2, $t2, 4
+	addi $t4, $t4, 4
+	bne $t4, 16, enemy1_loop
+	
+	addi $t2, $t2, 1004
+	sw $t6, 0($t2)
+	addi $t2, $t2, 4
+	
+	li $t5, 0xff0000
+	li $t4, 0
+enemy2_loop:
+	sw $t5, 0($t2)
+	addi $t2, $t2, 4
+	addi $t4, $t4, 4
+	bne $t4, 16, enemy2_loop
+	
+	sw $t6, 0($t2)
+	
+	addi $t2, $t2, 1004
+	li $t4, 0
+enemy3_loop:
+	sw $t6, 0($t2)
+	addi $t2, $t2, 4
+	addi $t4, $t4, 4
+	bne $t4, 24, enemy3_loop
+	# output pixel value back to memory
+enemy_end:
+	jr $ra
 
 
+################################################################
+DELETE_ENEMY:
+	lw $t2, 0($sp)
+	addi $sp, $sp, 4
 
+	li $t6, 0x4dabf7
+	li $t4, 0
+delete_enemy1_loop:
+	sw $t6, 0($t2)
+	addi $t2, $t2, 4
+	addi $t4, $t4, 4
+	bne $t4, 16, delete_enemy1_loop
 
+	addi $t2, $t2, 1004
+	sw $t6, 0($t2)
+	addi $t2, $t2, 4
+	
+	li $t4, 0
+delete_enemy2_loop:
+	sw $t6, 0($t2)
+	addi $t2, $t2, 4
+	addi $t4, $t4, 4
+	bne $t4, 16, delete_enemy2_loop
+	
+	sw $t6, 0($t2)
+	
+	addi $t2, $t2, 1004
+	li $t4, 0
+delete_enemy3_loop:
+	sw $t6, 0($t2)
+	addi $t2, $t2, 4
+	addi $t4, $t4, 4
+	bne $t4, 24, delete_enemy3_loop
+	
+	# output pixel value back to memory
+	
+delete_enemy_end:
+	jr $ra
 
+################################################################
+GENERATE_PEBBLE:
+	lw $t2, 0($sp) # load pebble pixel value offset
+	addi $sp, $sp, 4
+	lw $t3, 0($sp) # load pebble truth value (pebble collected)
+	addi $sp, $sp, 4 
+	beq $t3, 0, no_random_pebble
+		
+pebble_randomize:
+# Store ra value into stack
+	addi $sp, $sp, -4
+	sw $ra, 0($sp)
+	
+	addi $sp, $sp, -4 # store pixel value into stack
+	sw $t2, ($sp)
+	jal DELETE_PEBBLE
+	
+	lw $ra, 0($sp)
+	addi $sp, $sp, 4
 
+	li $v0, 42
+	li $a0, 0
+	li $a1, 56
+	syscall
+	
+	addi $t5, $a0, 32
+	li $t8, 1024
+	mult, $t5, $t8
+	mflo $t5
+	
+	li $v0, 42
+	li $a0, 0
+	li $a1, 80
+	syscall
+	
+	li $t8, 4
+	addi $t2, $a0, 32
+	mult $t2, $t8
+	mflo $t2
+	add $t2, $t2, $t5
+	addi $t2, $t2, BASE_ADDRESS
 
+no_random_pebble:
+	addi $t7, $t2, 0 # Store beginning pixel of pebble whether randomized or not
+	li $t6, 0
+	li $t4, 0
+pebble1_loop:	
+
+	sw $t6, 0($t2)
+	addi $t2, $t2, 4
+	addi $t4, $t4, 4
+	bne $t4, 16, pebble1_loop
+	
+	addi $t2, $t2, 1004
+	sw $t6, 0($t2)
+	addi $t2, $t2, 4
+	
+	li $t5, 0x888888
+	li $t4, 0
+pebble2_loop:
+	sw $t5, 0($t2)
+	addi $t2, $t2, 4
+	addi $t4, $t4, 4
+	bne $t4, 16, pebble2_loop
+	
+	sw $t6, 0($t2)
+	
+	addi $t2, $t2, 1004
+	li $t4, 0
+pebble3_loop:
+	sw $t6, 0($t2)
+	addi $t2, $t2, 4
+	addi $t4, $t4, 4
+	bne $t4, 24, pebble3_loop
+	
+	# output pixel value back to memory
+pebble_end:
+	la $t4, pebble_pixel
+	sw $t7, 0($t4)
+		
+	la $t4, pebble_collected
+	li $t7, 0
+	sw $t7, 0($t4)
+	
+	jr $ra
+
+################################################################
+DELETE_PEBBLE:
+
+	lw $t2, 0($sp)
+	addi $sp, $sp, 4
+
+	li $t6, 0x4dabf7
+	li $t4, 0
+delete_pebble1_loop:
+	sw $t6, 0($t2)
+	addi $t2, $t2, 4
+	addi $t4, $t4, 4
+	bne $t4, 16, delete_pebble1_loop
+	
+	addi $t2, $t2, 1004
+	sw $t6, 0($t2)
+	addi $t2, $t2, 4
+	
+	li $t4, 0
+delete_pebble2_loop:
+	sw $t6, 0($t2)
+	addi $t2, $t2, 4
+	addi $t4, $t4, 4
+	bne $t4, 16, delete_pebble2_loop
+	
+	sw $t6, ($t2)
+	addi $t2, $t2, 1004
+	li $t4, 0
+delete_pebble3_loop:
+	sw $t6, 0($t2)
+	addi $t2, $t2, 4
+	addi $t4, $t4, 4
+	bne $t4, 24, delete_pebble3_loop
+	
+	# output pixel value back to memory
+delete_pebble_end:
+	jr $ra
+	
+#################################################################
+PEBBLE_COLLECTED:
+	
+	# Can reuse with enemy pebbles
+	lw $t2, ($sp) # load rock pixel value
+	addi $sp, $sp, 4
+	lw $t3, ($sp) # load pebble pixel value
+	addi $sp, $sp, 4
+	
+	bge $t3, $t2, first_row
+	addi $t5, $t3, 16
+	bge $t3, $t2, first_row
+	j not_equal
+first_row:
+	addi $t2, $t2, 28
+	ble $t3, $t2, equal
+	addi $t5, $t3, 16
+	ble $t5, $t2, equal
+	
+	addi $t2, $t2, 992
+	bge $t3, $t2, second_row
+	j not_equal
+second_row:
+	addi $t2, $t2, 20
+	ble $t3, $t2, equal
+	addi $t5, $t3, 16
+	ble $t5, $t2, equal
+	
+	addi $t2, $t2, 988
+	bge $t3, $t2, third_row
+	j not_equal
+third_row:
+	addi $t2, $t2, 32
+	ble $t3, $t2, equal
+	addi $t5, $t3, 16
+	ble $t5, $t2, equal
+	
+	addi $t2, $t2, 980
+	bge $t3, $t2, fourth_row
+	j not_equal
+fourth_row:
+	addi $t2, $t2, 40
+	ble $t3, $t2, equal
+	addi $t5, $t3, 16
+	ble $t5, $t2, equal
+	
+	addi $t2, $t2, 980
+	bge $t3, $t2, fifth_row
+	j not_equal
+fifth_row:
+	addi $t2, $t2, 36
+	ble $t3, $t2, equal
+	addi $t5, $t3, 16
+	ble $t5, $t2, equal
+	
+	addi $t2, $t2, 984
+	bge $t3, $t2, sixth_row
+	j not_equal
+sixth_row:
+	addi $t2, $t2, 32
+	ble $t3, $t2, equal
+	addi $t5, $t3, 16
+	ble $t5, $t2, equal
+	
+	addi $t2, $t2, 992
+	bge $t3, $t2, seventh_row
+	j not_equal
+seventh_row:
+	addi $t2, $t2, 28
+	ble $t3, $t2, equal
+	addi $t5, $t3, 16
+	ble $t5, $t2, equal
+	
+	j not_equal
+equal:
+	la $t8, pebble_collected # Set pebble collected boolean value to 1
+	li $t7, 1
+	sw $t7, 0($t8)
+	
+	la $t7, score
+	lw $t8, 0($t7)
+	addi $t8, $t8, 1
+	sw $t8, 0($t7)
+not_equal:
+	jr $ra
 #################################################################
 # Checks if the avatar can move
 CAN_MOVE:
@@ -1095,7 +1471,7 @@ check_up:
 	li $t5, BASE_ADDRESS
 	addi $t5, $t5, 1020
 	ble $t4, $t5, no_move
-	lw $t5, ($t4)
+	lw $t5, 0($t4)
 	beq $t5, 0x8e8e8e, no_move
 	
 	li $t9, -1
@@ -1110,10 +1486,10 @@ check_ocean:
 check_platform:
 	addi $t6 $t4, 0
 	addi $t6, $t6, -4
-	lw $t5, ($t6)
+	lw $t5, 0($t6)
 	beq $t5, 0x8e8e8e, no_move # Checks if bottom of rock hits a platform
 	addi $t6, $t6, 24
-	lw $t5, ($t6)
+	lw $t5, 0($t6)
 	beq $t5, 0x8e8e8e, no_move
 	# Not on a platform
 	li $t9, NO_JUMP # also determines whether on platform or not
@@ -1132,81 +1508,9 @@ end_can_move:
 	jr $ra
 	
 	
-	
-
-######################################################`
-PLATFORM_MOVEMENT:
-
-	# REQUIREMENTS AND GIVENS
-	#	- Must use stack to keep track of randomized pixel value + offsets
-	#	- Must create a random integer from 1 to 90 (perhaps) to generate platforms on
-	#	- Must shift platforms to the beginning of the row (from right to left)
-	#	- Must create a new platform to start shifting after a couple iterations of shifting (perhaps 128 iterations of -4 shifting (OR 64 iterations of -8 shifting)
-
-	# For reusability, load paramter to decide which image to display: 1 for platforms, 2 for enemies, platforms move at -12 but enemies move quicker at -24
-	
-	
-	# Only paramters required is iteration number ( 85, -12 iterations ) and old pixel value (for first iteration)
-	lw $t2, ($sp) # Load iteration
-	addi $sp, $sp, 4
-	
-	lw $t3, ($sp) # Load into $t3 from stack (SECOND PARAMETER)
-	addi $sp, $sp, 4
-
-# 0. First check if pixel is at its first iteration, if it is go to step 1, otherwise skip randomize step and load old pixel value
-	bge $t2, 1, old_pixel
-# 1. Initialize new randomized pixel
-randomize:
-
-	li $v0, 42
-	li $a0, 0
-	li $a1, 70
-	syscall
-	
-	addi $t3, $a0, 20
-	li $t4, 1024
-	mult $t3, $t4
-	mflo $t3
-	addi $t3, $t3, -4
-	
-# 2.Use old pixel input
-old_pixel:
-# Store old $ra value
-	addi $sp, $sp, -4 # STORE LAST FUNC CALL ADDRESS
-	sw $ra, 0($sp)
-	
-# 3. Shift randomized pixel (or platform) to the left by -12 and delete old platform
-	
-	addi $sp, $sp, -4
-	sw $t3, ($sp)
-	jal DELETE_TEST_PLATFORM
-	
-	lw $t3, ($sp)
-	addi $sp, $sp, 4
-	
-	addi $t3, $t3, -8
-# 4. Generate new platform
-	addi $sp, $sp, -4
-	sw $t3, ($sp)
-	jal TEST_PLATFORM
-
-	lw $t3, ($sp)
-	addi $sp, $sp, 4
-
-	# Load old $ra value
-	lw $ra, 0($sp)
-	addi $sp, $sp, 4
-	
-	# Load $t1 into stack
-	addi $sp, $sp, -4 
-	sw $t3, ($sp)
-	
-	jr $ra
-	
-######################################################
+############################################################
 # DEALS WITH PLATFORM LEVELS
 LEVEL_1:
-
 	addi $sp, $sp, -4 # STORE LAST FUNC CALL ADDRESS
 	sw $ra, 0($sp)
 
@@ -1275,3 +1579,937 @@ increment:
 	
 	jr $ra
 
+
+######################################################
+# Display the current score
+DISPLAY_SCORE:
+
+	li $t4, BASE_ADDRESS
+	li $t5, 0x000000
+	
+	la $t3, score
+	lw $t3, 0($t3)
+	beq $t3, 0, zero
+	beq $t3, 1, one
+	beq $t3, 2, two
+	beq $t3, 3, three
+	beq $t3, 4, four
+	beq $t3, 5, five
+	beq $t3, 6, six
+	beq $t3, 7, seven
+	beq $t3, 8, eight
+	beq $t3, 9, nine
+	beq $t3, 10, ten
+	j score_end
+	
+##########################################
+# Display 0
+zero:
+	li $t6, 0
+	addi $t4, $t4, 4104
+zero_loop1:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, zero_loop1
+	
+	addi $t4, $t4, 1008
+	sw $t5, 0($t4)
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	
+	addi $t4, $t4, 1012
+	sw $t5, 0($t4)
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	
+	addi $t4, $t4, 1012
+	sw $t5, 0($t4)
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	
+	addi $t4, $t4, 1012
+	sw $t5, 0($t4)
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	
+	addi $t4, $t4, 1012
+	li $t6, 0	
+zero_loop2:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, zero_loop2
+
+	j score_end
+
+######################################
+# Display 1
+one:
+	li $t4, BASE_ADDRESS
+	li $t6, 0
+	li $t5, 0x4dabf7
+	addi $t4, $t4, 4104
+delete_zero_loop1:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_zero_loop1
+	
+	addi $t4, $t4, 1008
+	sw $t5, 0($t4)
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	
+	addi $t4, $t4, 1012
+	sw $t5, 0($t4)
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	
+	addi $t4, $t4, 1012
+	sw $t5, 0($t4)
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	
+	addi $t4, $t4, 1012
+	sw $t5, 0($t4)
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	
+	addi $t4, $t4, 1012
+	li $t6, 0	
+delete_zero_loop2:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_zero_loop2
+	
+	
+	li $t4, BASE_ADDRESS
+	li $t5, 0x000000
+	addi $t4, $t4, 4120
+	li $t6, 0
+one_loop1:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1024
+	addi $t6, $t6, 4
+	bne $t6, 20, one_loop1
+
+	j score_end
+	
+#########################################
+# Display 2
+two:
+	li $t4, BASE_ADDRESS
+	li $t5, 0x4dabf7
+	addi $t4, $t4, 4120
+	li $t6, 0
+delete_one_loop1:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1024
+	addi $t6, $t6, 4
+	bne $t6, 20, delete_one_loop1
+	
+	li $t4, BASE_ADDRESS
+	li $t5, 0x000000
+	addi $t4, $t4, 4104
+	li $t6, 0
+two_loop1:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, two_loop1
+	
+	addi $t4, $t4, 1020
+	sw $t5, 0($t4)
+	
+	addi $t4, $t4, 1012
+	
+	li $t6, 0
+two_loop2:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, two_loop2
+	
+	addi $t4, $t4, 1008
+	sw $t5, 0($t4)
+	
+	addi $t4, $t4, 1024
+	li $t6, 0
+two_loop3:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, two_loop3
+
+	j score_end
+three:
+
+	li $t4, BASE_ADDRESS
+	li $t5, 0x4dabf7
+	addi $t4, $t4, 4104
+	li $t6, 0
+delete_two_loop1:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_two_loop1
+	
+	addi $t4, $t4, 1020
+	sw $t5, 0($t4)
+	
+	addi $t4, $t4, 1012
+	
+	li $t6, 0
+delete_two_loop2:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_two_loop2
+	
+	addi $t4, $t4, 1008
+	sw $t5, 0($t4)
+	
+	addi $t4, $t4, 1024
+	li $t6, 0
+delete_two_loop3:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_two_loop3
+	
+	
+	li $t4, BASE_ADDRESS
+	li $t5, 0x000000
+	addi $t4, $t4, 4104
+	li $t6, 0
+three_loop1:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, three_loop1
+	
+	addi $t4, $t4, 1020
+	sw $t5, 0($t4)
+	
+	addi $t4, $t4, 1012
+	li $t6, 0
+three_loop2:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, three_loop2
+	
+	addi $t4, $t4, 1020
+	sw $t5, 0($t4)
+	
+	addi $t4, $t4, 1012
+	li $t6, 0
+three_loop3:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, three_loop3
+	
+	
+	j score_end
+four:
+
+	li $t4, BASE_ADDRESS
+	li $t5, 0x4dabf7
+	addi $t4, $t4, 4104
+	li $t6, 0
+delete_three_loop1:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_three_loop1
+	
+	addi $t4, $t4, 1020
+	sw $t5, 0($t4)
+	
+	addi $t4, $t4, 1012
+	li $t6, 0
+delete_three_loop2:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_three_loop2
+	
+	addi $t4, $t4, 1020
+	sw $t5, 0($t4)
+	
+	addi $t4, $t4, 1012
+	li $t6, 0
+delete_three_loop3:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_three_loop3
+	
+	
+
+	li $t4, BASE_ADDRESS
+	li $t5, 0x000000
+	addi $t4, $t4, 4104
+	
+	sw $t5, 0($t4)
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1012
+	sw $t5, 0($t4)
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1012
+	
+	li $t6, 0
+four_loop1:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, four_loop1
+	
+	addi $t4, $t4, 1020
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1024
+	sw $t5, 0($t4)
+
+	j score_end
+
+#################################
+# Display 5
+five:
+	li $t4, BASE_ADDRESS
+	li $t5, 0x4dabf7
+	addi $t4, $t4, 4104
+	
+	sw $t5, 0($t4)
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1012
+	sw $t5, 0($t4)
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1012
+	
+	li $t6, 0
+delete_four_loop1:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_four_loop1
+	
+	addi $t4, $t4, 1020
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1024
+	sw $t5, 0($t4)
+	
+	
+	li $t4, BASE_ADDRESS
+	li $t5, 0x000000
+	addi $t4, $t4, 4104
+	li $t6, 0
+five_loop1:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, five_loop1
+	
+	addi $t4, $t4, 1008
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1024
+	li $t6, 0
+five_loop2:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, five_loop2
+	
+	addi $t4, $t4, 1020
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1012
+	li $t6, 0
+five_loop3:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, five_loop3
+
+	j score_end
+###################################
+# Display 6
+six:
+
+	li $t4, BASE_ADDRESS
+	li $t5, 0x4dabf7
+	addi $t4, $t4, 4104
+	li $t6, 0
+delete_five_loop1:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_five_loop1
+	
+	addi $t4, $t4, 1008
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1024
+	li $t6, 0
+delete_five_loop2:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_five_loop2
+	
+	addi $t4, $t4, 1020
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1012
+	li $t6, 0
+delete_five_loop3:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_five_loop3
+	
+	
+	li $t4, BASE_ADDRESS
+	li $t5, 0x000000
+	addi $t4, $t4, 4104
+	li $t6, 0
+six_loop1:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, six_loop1
+	
+	addi $t4, $t4, 1008
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1024
+	li $t6, 0
+six_loop2:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, six_loop2
+	
+	addi $t4, $t4, 1008
+	sw $t5, 0($t4)
+	
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1012
+	li $t6, 0
+six_loop3:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, six_loop3
+
+	j score_end
+
+########################################
+# Display 7
+seven:
+	li $t4, BASE_ADDRESS
+	li $t5, 0x4dabf7
+	addi $t4, $t4, 4104
+	li $t6, 0
+delete_six_loop1:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_six_loop1
+	
+	addi $t4, $t4, 1008
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1024
+	li $t6, 0
+delete_six_loop2:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_six_loop2
+	
+	addi $t4, $t4, 1008
+	sw $t5, 0($t4)
+	
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1012
+	li $t6, 0
+delete_six_loop3:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_six_loop3
+	
+
+	li $t4, BASE_ADDRESS
+	li $t5, 0x000000
+	addi $t4, $t4, 4104
+	li $t6, 0
+seven_loop1:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, seven_loop1
+	
+	addi $t4, $t4, 1020
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1024
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1024
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1024
+	sw $t5, 0($t4)
+
+	j score_end
+################################
+# Display 8
+eight:
+
+	li $t4, BASE_ADDRESS
+	li $t5, 0x4dabf7
+	addi $t4, $t4, 4104
+	li $t6, 0
+delete_seven_loop1:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_seven_loop1
+	
+	addi $t4, $t4, 1020
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1024
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1024
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1024
+	sw $t5, 0($t4)
+	
+	li $t4, BASE_ADDRESS
+	li $t5, 0x000000
+	addi $t4, $t4, 4104
+	li $t6, 0
+eight_loop1:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, eight_loop1
+	
+	addi $t4, $t4, 1008
+	sw $t5, 0($t4)
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1012
+	li $t6, 0
+eight_loop2:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, eight_loop2
+	
+	addi $t4, $t4, 1008
+	sw $t5, 0($t4)
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1012
+
+	li $t6, 0
+eight_loop3:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, eight_loop3
+	
+
+	j score_end
+########################
+# Display 9
+nine:
+
+	li $t4, BASE_ADDRESS
+	li $t5, 0x4dabf7
+	addi $t4, $t4, 4104
+	li $t6, 0
+delete_eight_loop1:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_eight_loop1
+	
+	addi $t4, $t4, 1008
+	sw $t5, 0($t4)
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1012
+	li $t6, 0
+delete_eight_loop2:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_eight_loop2
+	
+	addi $t4, $t4, 1008
+	sw $t5, 0($t4)
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1012
+
+	li $t6, 0
+delete_eight_loop3:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_eight_loop3
+	
+	
+	li $t4, BASE_ADDRESS
+	li $t5, 0x000000
+	addi $t4, $t4, 4104
+	li $t6, 0
+nine_loop1:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, nine_loop1
+	
+	addi $t4, $t4, 1008
+	sw $t5, 0($t4)
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1012
+	li $t6, 0
+nine_loop2:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, nine_loop2
+	
+	addi $t4, $t4, 1020
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1012
+
+	li $t6, 0
+nine_loop3:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, nine_loop3
+
+	j score_end
+
+ten:
+	li $t4, BASE_ADDRESS
+	li $t5, 0x4dabf7
+	addi $t4, $t4, 4104
+	li $t6, 0
+delete_nine_loop1:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_nine_loop1
+	
+	addi $t4, $t4, 1008
+	sw $t5, 0($t4)
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1012
+	li $t6, 0
+delete_nine_loop2:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_nine_loop2
+	
+	addi $t4, $t4, 1020
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1012
+
+	li $t6, 0
+delete_nine_loop3:
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	addi $t6, $t6, 4
+	bne $t6, 16, delete_nine_loop3
+	
+	
+# DISPLAY A CHECKMARK IF AT 10 BECAUSE ITS EASIER
+
+	li $t4, BASE_ADDRESS
+	li $t5, 0x00ff40
+	addi $t4, $t4, 4128
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1020
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1020
+	sw $t5, 0($t4)
+	addi $t4, $t4, 1008
+	sw $t5, 0($t4)
+	addi $t4, $t4, 12
+	sw $t5, 0($t4)
+	addi, $t4, $t4, 1016
+	sw $t5, 0($t4)
+	addi $t4, $t4, 4
+	sw $t5, 0($t4)
+	
+	j score_end
+
+score_end:
+	jr $ra
+	
+#####################################################################
+# Display health
+DISPLAY_HEALTH:
+
+	addi $sp, $sp, -4
+	sw $ra, 0($sp)
+	la $t5, health
+	lw $t5, ($t5)
+	beq $t5, 3, three_heart
+	beq $t5, 2, two_heart
+	beq $t5, 1, one_heart
+	beq $t5, 0, no_heart
+	j finish_heart
+	
+no_heart:
+	li $t5, BASE_ADDRESS
+	addi $t5, $t5, 4136
+	addi $sp, $sp, -4
+	sw $t5, 0($sp)
+	jal DELETE_HEART
+	
+	li $t5, BASE_ADDRESS
+	addi $t5, $t5, 4168
+	addi $sp, $sp, -4
+	sw $t5, 0($sp)
+	jal DELETE_HEART
+	
+	li $t5, BASE_ADDRESS
+	addi $t5, $t5, 4200
+	addi $sp, $sp, -4
+	sw $t5, 0($sp)
+	jal DELETE_HEART
+	
+	j finish_heart
+
+one_heart:
+	li $t5, BASE_ADDRESS
+	addi $t5, $t5, 4136
+	addi $sp, $sp, -4
+	sw $t5, 0($sp)
+	jal GENERATE_HEART
+	
+	li $t5, BASE_ADDRESS
+	addi $t5, $t5, 4168
+	addi $sp, $sp, -4
+	sw $t5, 0($sp)
+	jal DELETE_HEART
+	
+	li $t5, BASE_ADDRESS
+	addi $t5, $t5, 4200
+	addi $sp, $sp, -4
+	sw $t5, 0($sp)
+	jal DELETE_HEART
+	
+	j finish_heart
+
+
+two_heart:
+	li $t5, BASE_ADDRESS
+	addi $t5, $t5, 4136
+	addi $sp, $sp, -4
+	sw $t5, 0($sp)
+	jal GENERATE_HEART
+	
+	li $t5, BASE_ADDRESS
+	addi $t5, $t5, 4168
+	addi $sp, $sp, -4
+	sw $t5, 0($sp)
+	jal GENERATE_HEART
+	
+	li $t5, BASE_ADDRESS
+	addi $t5, $t5, 4200
+	addi $sp, $sp, -4
+	sw $t5, 0($sp)
+	jal DELETE_HEART
+	
+	j finish_heart
+
+
+three_heart:
+	li $t5, BASE_ADDRESS
+	addi $t5, $t5, 4136
+	addi $sp, $sp, -4
+	sw $t5, 0($sp)
+	jal GENERATE_HEART
+	
+	li $t5, BASE_ADDRESS
+	addi $t5, $t5, 4168
+	addi $sp, $sp, -4
+	sw $t5, 0($sp)
+	jal GENERATE_HEART
+	
+	li $t5, BASE_ADDRESS
+	addi $t5, $t5, 4200
+	addi $sp, $sp, -4
+	sw $t5, 0($sp)
+	jal GENERATE_HEART
+	
+	
+finish_heart:	
+	lw $ra, 0($sp)
+	addi $sp, $sp, 4
+
+	jr $ra
+
+#####################################################################
+
+GENERATE_HEART:
+	lw $t3, 0($sp) # Load pixel value to store at
+	addi $sp, $sp, 4
+	
+	li $t5, 0
+	li $t6, 0xca0000
+	
+	sw $t5, 0($t3)
+	addi $t3, $t3, 4
+	sw $t5, 0($t3)
+	addi $t3, $t3, 8
+	sw $t5, 0($t3)
+	addi $t3, $t3, 4
+	sw $t5, 0($t3)
+	addi $t3, $t3, 1004
+	sw $t5, 0($t3)
+	addi $t3, $t3, 4
+	sw $t6, 0($t3)
+	addi $t3, $t3, 4
+	sw $t6, 0($t3)
+	addi $t3, $t3, 4
+	sw $t5, 0($t3)
+	addi $t3, $t3, 4
+	sw $t6, 0($t3)
+	addi $t3, $t3, 4
+	sw $t6, 0($t3)
+	addi $t3, $t3, 4
+	sw $t5, 0($t3)
+	
+	addi $t3, $t3, 1000
+	sw $t5, 0($t3)
+	addi $t3, $t3, 4
+
+	li $t7, 0
+heart_loop1:
+	sw $t6, 0($t3)
+	addi $t7, $t7, 4
+	addi $t3, $t3, 4
+	bne $t7, 20, heart_loop1
+	sw $t5, 0($t3)
+	
+	addi $t3, $t3, 1004
+	sw $t5, 0($t3)
+	addi $t3, $t3, 4
+	sw $t6, 0($t3)
+	addi $t3, $t3, 4
+	sw $t6, 0($t3)
+	addi $t3, $t3, 4
+	sw $t6, 0($t3)
+	addi $t3, $t3, 4
+	sw $t5, 0($t3)
+	
+	addi $t3, $t3, 1012
+	sw $t5, 0($t3)
+	addi $t3, $t3, 4
+	sw $t6, 0($t3)
+	addi $t3, $t3, 4
+	sw $t5, 0($t3)
+	addi $t3, $t3, 1020
+	sw $t5, 0($t3)
+	
+	jr $ra
+	
+	
+####################################################################
+DELETE_HEART:
+	lw $t3, 0($sp) # Load pixel value to store at
+	addi $sp, $sp, 4
+	
+	li $t5, 0x4dabf7
+	li $t6, 0x4dabf7
+	
+	sw $t5, 0($t3)
+	addi $t3, $t3, 4
+	sw $t5, 0($t3)
+	addi $t3, $t3, 8
+	sw $t5, 0($t3)
+	addi $t3, $t3, 4
+	sw $t5, 0($t3)
+	addi $t3, $t3, 1004
+	sw $t5, 0($t3)
+	addi $t3, $t3, 4
+	sw $t6, 0($t3)
+	addi $t3, $t3, 4
+	sw $t6, 0($t3)
+	addi $t3, $t3, 4
+	sw $t5, 0($t3)
+	addi $t3, $t3, 4
+	sw $t6, 0($t3)
+	addi $t3, $t3, 4
+	sw $t6, 0($t3)
+	addi $t3, $t3, 4
+	sw $t5, 0($t3)
+	
+	addi $t3, $t3, 1000
+	sw $t5, 0($t3)
+	addi $t3, $t3, 4
+
+	li $t7, 0
+delete_heart_loop:
+	sw $t6, 0($t3)
+	addi $t7, $t7, 4
+	addi $t3, $t3, 4
+	bne $t7, 20, delete_heart_loop
+	sw $t5, 0($t3)
+	
+	addi $t3, $t3, 1004
+	sw $t5, 0($t3)
+	addi $t3, $t3, 4
+	sw $t6, 0($t3)
+	addi $t3, $t3, 4
+	sw $t6, 0($t3)
+	addi $t3, $t3, 4
+	sw $t6, 0($t3)
+	addi $t3, $t3, 4
+	sw $t5, 0($t3)
+	
+	addi $t3, $t3, 1012
+	sw $t5, 0($t3)
+	addi $t3, $t3, 4
+	sw $t6, 0($t3)
+	addi $t3, $t3, 4
+	sw $t5, 0($t3)
+	addi $t3, $t3, 1020
+	sw $t5, 0($t3)
+	
+	jr $ra
+	
+
+#############################################################
+
+DISPLAY_DAMAGED:
+	lw $t4, 0($sp)
+	addi $sp, $sp, 4
+	
+	addi $sp, $sp, -4
+	sw $ra, 0($sp)
+	
+	
+	
+	
+	
+	
+	
+	
+	lw $ra, 0($sp)
+	addi $sp, $sp, 4
+	jr $ra
