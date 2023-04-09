@@ -1451,7 +1451,7 @@ pebble_randomize:
 	
 	li $v0, 42
 	li $a0, 0
-	li $a1, 80
+	li $a1, 416 # between 32 and 448
 	syscall
 	
 	li $t8, 4
